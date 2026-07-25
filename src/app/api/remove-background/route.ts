@@ -17,18 +17,14 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log("Image reçue :", imageUrl);
-
-    // Récupération de l'image depuis Supabase
     const imageResponse = await fetch(imageUrl);
 
     if (!imageResponse.ok) {
-      throw new Error("Impossible de récupérer l'image originale");
+      throw new Error("Impossible de récupérer l'image");
     }
 
     const imageBuffer = await imageResponse.arrayBuffer();
 
-    // Préparation du fichier pour l'IA Render
     const formData = new FormData();
 
     formData.append(
@@ -39,39 +35,38 @@ export async function POST(req: Request) {
       "image.webp"
     );
 
-    console.log("Envoi vers Render...");
+    const controller = new AbortController();
 
-    // Appel API IA
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 180000); // 3 minutes
+
     const aiResponse = await fetch(
       "https://vintclean-ai-api.onrender.com/remove-background",
       {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       }
     );
 
-    console.log(
-      "Réponse Render :",
-      aiResponse.status
-    );
+    clearTimeout(timeout);
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
 
       throw new Error(
-        `Render erreur ${aiResponse.status}: ${errorText}`
+        `Erreur Render ${aiResponse.status}: ${errorText}`
       );
     }
 
     const processedImage =
       await aiResponse.arrayBuffer();
 
-
-    // Upload dans Supabase
     const fileName =
       `processed-${Date.now()}.png`;
 
-    const { error: uploadError } =
+    const { error } =
       await supabaseAdmin.storage
         .from("processed-images")
         .upload(
@@ -79,40 +74,26 @@ export async function POST(req: Request) {
           processedImage,
           {
             contentType: "image/png",
-            upsert: false,
           }
         );
 
-
-    if (uploadError) {
-      throw uploadError;
+    if (error) {
+      throw error;
     }
-
 
     const { data } =
       supabaseAdmin.storage
         .from("processed-images")
         .getPublicUrl(fileName);
 
-
-    console.log(
-      "Image finale :",
-      data.publicUrl
-    );
-
-
     return NextResponse.json({
       success: true,
       processedImage: data.publicUrl,
     });
 
-
   } catch (error) {
 
-    console.error(
-      "ERREUR COMPLETE :",
-      error
-    );
+    console.error(error);
 
     return NextResponse.json(
       {
