@@ -11,10 +11,7 @@ export async function POST(req: Request) {
     const { imageUrl } = await req.json();
 
     if (!imageUrl) {
-      return NextResponse.json(
-        { error: "Image manquante" },
-        { status: 400 }
-      );
+      throw new Error("Image manquante");
     }
 
     const imageResponse = await fetch(imageUrl);
@@ -35,11 +32,13 @@ export async function POST(req: Request) {
       "image.webp"
     );
 
+
     const controller = new AbortController();
 
     const timeout = setTimeout(() => {
       controller.abort();
-    }, 180000); // 3 minutes
+    }, 600000); // 10 minutes
+
 
     const aiResponse = await fetch(
       "https://vintclean-ai-api.onrender.com/remove-background",
@@ -50,21 +49,26 @@ export async function POST(req: Request) {
       }
     );
 
+
     clearTimeout(timeout);
 
+
     if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
+      const text = await aiResponse.text();
 
       throw new Error(
-        `Erreur Render ${aiResponse.status}: ${errorText}`
+        `Erreur Render ${aiResponse.status}: ${text}`
       );
     }
+
 
     const processedImage =
       await aiResponse.arrayBuffer();
 
+
     const fileName =
       `processed-${Date.now()}.png`;
+
 
     const { error } =
       await supabaseAdmin.storage
@@ -77,19 +81,23 @@ export async function POST(req: Request) {
           }
         );
 
+
     if (error) {
       throw error;
     }
+
 
     const { data } =
       supabaseAdmin.storage
         .from("processed-images")
         .getPublicUrl(fileName);
 
+
     return NextResponse.json({
       success: true,
       processedImage: data.publicUrl,
     });
+
 
   } catch (error) {
 
